@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "/",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "Name",
+    "TransactionDate",
+    "ID"
+  ],
+  "properties": {
+    "Name": {
+      "id": "Name",
+      "type": "string",
+	  "minLength": 3,
+	  "maxLength": 32
+    },
+    "TransactionDate": {
+      "id": "TransactionDate",
+      "type": "string"
+    },
+    "ID": {
+      "id": "ID",
+      "type": "integer"
+    },
+    "Data": {
+      "id": "Data",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    }
+  }
+}
