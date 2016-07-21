@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp" xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp" xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd">
+    <file:connector name="File" autoDelete="false" outputAppend="true" streaming="true" validateConnections="false" doc:name="File" dynamicNotification="true"></file:connector>
+    <http:listener-config name="HTTP_Listener_Configuration" host="${httpHost}" port="${httpPort}" doc:name="HTTP Listener Configuration"></http:listener-config>
+    <ftp:connector name="FTP" pollingFrequency="${pollFrequency}" validateConnections="true" doc:name="FTP"></ftp:connector>
+    <file:connector name="File-Input" autoDelete="false" outputAppend="true" streaming="true" validateConnections="true" doc:name="File"></file:connector>
+    
+    
+    <flow name="file-share-prototype"> 
+        <file:inbound-endpoint path="${inputPath}" connector-ref="File-Input" responseTimeout="${fileTimeOut}" doc:name="File" moveToDirectory="${moveToDir}"> </file:inbound-endpoint>  
+        <!--  <ftp:inbound-endpoint host="${host}" port="${port}" path="${filePath}" user="${user}" password="${password}" connector-ref="FTP" responseTimeout="10000" doc:name="FTP"></ftp:inbound-endpoint>  -->  
+        <json:json-to-object-transformer doc:name="json-to-object"></json:json-to-object-transformer>  
+        <flow-ref name="validate" doc:name="validate"></flow-ref>  
+        <dw:transform-message doc:name="transform"> 
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+payload]]></dw:set-payload>  
+        </dw:transform-message>  
+        <logger level="INFO" doc:name="logger" message="Data read and transformed" category="com.prototype.file-share"></logger>  
+        <flow-ref name="write-to-disk" doc:name="write-to-disk"></flow-ref>  
+        <catch-exception-strategy doc:name="catch-file-read-write-exception"> 
+            <logger message="Exception caused during main flow for file reading from FTP and writing; #[exception.cause.toString()]" level="INFO" category="com.prototype.file-share" doc:name="logger"></logger>  
+        </catch-exception-strategy>  
+    </flow>
+    <flow name="write-to-disk"> 
+        <byte-array-to-string-transformer doc:name="to-string"></byte-array-to-string-transformer>  
+        <file:outbound-endpoint path="${outputPath}" outputPattern="${fileName}" connector-ref="File" responseTimeout="${fileTimeOut}" doc:name="File"></file:outbound-endpoint>  
+        <logger message="Data written to disk (file)" level="INFO" category="com.prototype.write" doc:name="logger"></logger>  
+        <catch-exception-strategy doc:name="catch-write-exception"> 
+            <logger message="Exception caused during main flow for file reading from FTP and writing; #[exception.cause.toString()]" level="INFO" category="com.prototype.write" doc:name="logger"></logger>  
+        </catch-exception-strategy>  
+    </flow>
+    <flow name="validate"> 
+        <json:validate-schema schemaLocation="FileReadShare-schema.json" doc:name="validate-data"></json:validate-schema>  
+        <logger message="Data validated based on the schema provided" level="INFO" category="com.prototype.validate" doc:name="Logger"></logger>  
+        <catch-exception-strategy doc:name="catch-validate-exception"> 
+            <logger message="Exception caused during main flow for file reading from FTP and writing; #[exception.cause.toString()]" level="INFO" category="com.prototype.validate" doc:name="logger"></logger>  
+        </catch-exception-strategy>  
+    </flow>
+    <flow name="file-access-http" processingStrategy="synchronous"> 
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/${httpPath}" doc:name="HTTP"></http:listener>  
+        <logger level="INFO" doc:name="Logger" message="Data requested" category="com.prototype.http-access"></logger>  
+        <flow-ref name="read-file" doc:name="read-file"></flow-ref>  
+        <logger level="INFO" doc:name="Logger" category="com.prototype.http-access" message="Data read from disk and sent"></logger>  
+        <catch-exception-strategy doc:name="catch-http-access-exception"> 
+            <logger message="Exception caused during HTTP call to read/access file; #[exception.cause.toString()]" level="INFO" category="com.prototype.http-access" doc:name="logger"></logger>  
+        </catch-exception-strategy>  
+    </flow>
+    <flow name="read-file" processingStrategy="synchronous"> 
+        <!--  <set-payload value="#[Thread.currentThread().getContextClassLoader().getResourceAsStream(&quot;output.txt&quot;)]" doc:name="set-payload"></set-payload>  -->  
+        <scripting:component doc:name="Get File"> 
+            <scripting:script engine="Groovy"><![CDATA[new File('${readFile}').getText('UTF-8')]]></scripting:script>  
+        </scripting:component>  
+        <logger level="INFO" doc:name="Logger" category="com.prototype.read-file" message="Reading file from a disk as requested"></logger>  
+        <catch-exception-strategy doc:name="catch-file-read-exception"> 
+            <logger message="Exception caused during reading file; #[exception.cause.toString()]" level="INFO" category="com.prototype.read-file" doc:name="logger"></logger>  
+        </catch-exception-strategy>  
+    </flow>
+</mule>
